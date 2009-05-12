@@ -33,16 +33,11 @@ UZG_PLAYER_URI        = "http://player.omroep.nl/"
 UZG_PLAYER_INIT_FILE  = UZG_PLAYER_URI + "js/initialization.js.php"
 UZG_PLAYER_META       = UZG_PLAYER_URI + "xml/metaplayer.xml.php"
 
-#UZG_DAY_REGEX       = '<a class="title" href="/index.php/serie(\?serID=\d+&amp;md5=[^"]+)">([^<]+)</a></td>\W+<td align="right">([^<]+)</td>'
-#UZG_TOP_REGEX       = r"""<td style=[^>]+><a href="/index.php/aflevering(\?aflID=\d+&amp;md5=[^"]+)">([^<]+)</a></td>\W+<td align="right">([^<]+)</td>"""
-
 UZG_REGEX_PAGE_ITEM2       = r"""<a href="http://player.omroep.nl/(\?aflID=\d+)"[^>]+><img .*? alt="bekijk uitzending: ([^\"]+)" />"""
-UZG_REGEX_SEARCH_ITEM      = r"""<a class="title" href="/index.php/search(\?serID=\d+&amp;md5=[^&]+)&sq=[^\"]+">([^<]+)</a>"""
 UZG_REGEX_PAGE_ITEM        = r"""<a class="title" href="/index.php/serie(\?serID=\d+&amp;md5=[^\"]+)">([^<]+)</a>"""
 UZG_REGEX_PAGE_PAGES       = r"""class="populair_top_pagina_nr">(\d+)</(a|strong)>"""
-#UZG_REGEX_PAGE_INFO       = r"""<td><a class=\"title\" href=\"/index.php/serie?\?serID=(\d+&amp;md5=[0-9a-f]+)\">%s</a></td>"""
 
-#UZG_REGEX_TEMP = r"""<a href="http://player.omroep.nl/(\?aflID=\d+&amp;md5=[0-9a-f]+)\""""
+UZG_REGEX_SEARCH_ITEM      = r"""<a class="title" href="/index.php/search(\?serID=\d+&amp;md5=[^&]+)&sq=[^\"]+">([^<]+)</a>"""
 
 UZG_REGEX_POPULAR_SECTION  = r"""<thead id=\"tooltip_populair\"([\w\W]+)<script type=\"text/javascript\">"""
 UZG_REGEX_POPULAR_ITEM     = r"""<td><a href=\"/index.php/aflevering(\?aflID=\d+&amp;md5=[0-9a-f]+)\">([^<]+)</a></td>\W+<td [^>]+>([^<]+)</td>"""
@@ -52,7 +47,7 @@ UZG_REGEX_TIPS_ITEM        = r"""<a href=\"/index.php/aflevering(\?aflID=\d+&amp
 
 UZG_REGEX_ITEM_SECURITY    = r"""var securityCode = '([0-9a-f]+)'"""
 UZG_REGEX_ITEM_INFO        = r"""<b class="btitle">[^<]+</b>\s+<p style="margin-top:5px;">(.*?)(\s+<)"""
-UZG_REGEX_ITEM_THUMB       = r"""<td height="100" style="padding-right:20px;">\s+<img src="(.*?)" .*? style="float:left;margin:0px 5px 0px 0px;" />"""
+UZG_REGEX_ITEM_THUMB       = r"""<td height="100"[^>]+>\s+<img src="(.*?)" .*? style="float:left;margin:0px 5px 0px 0px;" />"""
 
 UZG_REGEX_STREAM_URI       = r"""<stream[^>]+compressie_kwaliteit=.bb.[^>]+compressie_formaat=.wmv.[^>]*>([^<]*)</stream>"""
 UZG_REGEX_STREAM_DIRECT    = r"""<Ref href[^"]+"([^"]+)\""""
@@ -139,14 +134,11 @@ def HandleRequest(pathNouns, count):
       listPages(dir, (UZG_SEARCH_TITLE % (query)), UZG_REGEX_SEARCH_ITEM)
   elif pathNouns[0] == 'play':
     url = getStreamUrl(pathNouns[1])
-    #return Plugin.Redirect(url)
     dir.AppendItem(VideoItem(url, "Speel aflevering af", "", "", ""))
-    #dir.AppendItem(VideoItem("mms://tempo01.omroep.nl/nos_journaal24-bb", "Zoek oudere afleveringen", "", "", ""))
   elif pathNouns[0] == 'list':
     dir = MediaContainer('art-default.jpg', "Items", title1 = "Uitzending Gemist", title2 = title2)
-    dir.SetAttr("content", "items")
-    listShowItems(dir, urllib2.urlopen(UZG_ROOT_URI + "index.php/serie" + base64.b64decode(pathNouns[1])).read().decode('latin-1'), UZG_REGEX_PAGE_ITEM2, pathNouns[2])
-    listShowItems(dir, urllib2.urlopen(UZG_ROOT_URI + "index.php/serie2" + base64.b64decode(pathNouns[1])).read().decode('latin-1'), UZG_REGEX_PAGE_ITEM2, pathNouns[2])
+    listShowItems(dir, HTTP.GetCached(UZG_ROOT_URI + "index.php/serie" + base64.b64decode(pathNouns[1]), CACHE_INTERVAL).decode('latin-1'), UZG_REGEX_PAGE_ITEM2, pathNouns[2])
+    listShowItems(dir, HTTP.GetCached(UZG_ROOT_URI + "index.php/serie2" + base64.b64decode(pathNouns[1]), CACHE_INTERVAL).decode('latin-1'), UZG_REGEX_PAGE_ITEM2, pathNouns[2])
 
   return dir.ToXML()
 
@@ -197,7 +189,6 @@ def listPages(dir, url, regex):
   result = re.compile(UZG_REGEX_PAGE_PAGES, re.DOTALL + re.IGNORECASE).findall(data)
   if len(result) > 0:
     for e in result:
-      #listShows(dir, urllib2.urlopen('%s&pgNum=%s' % (url, e[0])).read().decode('latin-1'), regex)
       listShows(dir, HTTP.GetCached('%s&pgNum=%s' % (url, e[0]), CACHE_INTERVAL).decode('latin-1'), regex)
   else:
     listShows(dir, data, regex)
