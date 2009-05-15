@@ -6,17 +6,19 @@ Created on May 08, 2009
 @author: Matthijs.H
 '''
 
-#import from python
+# Import from python
 
 import re, datetime, base64, urllib2, string, os, sys
 
 # Import the parts of the Plex Media Server Plugin API we need
 
 from PMS import Plugin, Log, DB, Thread, XML, HTTP, JSON, RSS, Utils
-from PMS.MediaXML import MediaContainer, DirectoryItem, SearchDirectoryItem, VideoItem
+from PMS.MediaXML import MediaContainer, DirectoryItem, SearchDirectoryItem, VideoItem, MessageContainer
 from PMS.Shorthand import _L, _R, _E, _D
 
 UZG_PLUGIN_PREFIX  = "/video/uzgnl"
+
+# Uitzending Gemist URI's
 
 UZG_ROOT_URI       = "http://www.uitzendinggemist.nl/"
 
@@ -27,11 +29,16 @@ UZG_NED_ONE        = UZG_ROOT_URI + "index.php/selectie?searchitem=net_zender&ne
 UZG_NED_TWO        = UZG_ROOT_URI + "index.php/selectie?searchitem=net_zender&net_zender=2"
 UZG_NED_THREE      = UZG_ROOT_URI + "index.php/selectie?searchitem=net_zender&net_zender=3"
 UZG_NED_ZAPP       = UZG_ROOT_URI + "index.php/selectie?searchitem=omroep&omroep=47"
+
 UZG_SEARCH_TITLE   = UZG_ROOT_URI + "index.php/search?sq=%s&search_filter=titel"
+UZG_GENRES         = UZG_ROOT_URI + "index.php/selectie?searchitem=genre&genre=%s"
+UZG_OMROEPEN       = UZG_ROOT_URI + "index.php/selectie?searchitem=omroep&omroep=%s"
 
 UZG_PLAYER_URI        = "http://player.omroep.nl/"
 UZG_PLAYER_INIT_FILE  = UZG_PLAYER_URI + "js/initialization.js.php"
 UZG_PLAYER_META       = UZG_PLAYER_URI + "xml/metaplayer.xml.php"
+
+# Regular expressions
 
 UZG_REGEX_PAGE_ITEM2       = r"""<a href="http://player.omroep.nl/(\?aflID=\d+)"[^>]+><img .*? alt="bekijk uitzending: ([^\"]+)" />"""
 UZG_REGEX_PAGE_ITEM        = r"""<a class="title" href="/index.php/serie(\?serID=\d+&amp;md5=[^\"]+)">([^<]+)</a>"""
@@ -52,13 +59,17 @@ UZG_REGEX_ITEM_THUMB       = r"""<td height="100"[^>]+>\s+<img src="(.*?)" .*? s
 UZG_REGEX_STREAM_URI       = r"""<stream[^>]+compressie_kwaliteit=.bb.[^>]+compressie_formaat=.wmv.[^>]*>([^<]*)</stream>"""
 UZG_REGEX_STREAM_DIRECT    = r"""<Ref href[^"]+"([^"]+)\""""
 
+# Cache interval in seconds
+
 CACHE_INTERVAL      = 3600
 
 def Start():
   Plugin.AddRequestHandler(UZG_PLUGIN_PREFIX, HandleRequest, "Uitzending Gemist", "icon-default.jpg", "art-default.jpg")
   Plugin.AddViewGroup("Main", viewMode="List", contentType="items")
   Plugin.AddViewGroup("Items", viewMode="InfoList", contentType="items")
-  temp = urllib2.urlopen(UZG_ROOT_URI).read() #get NOS cookies
+  
+  # Make sure we have the cookies else we won't have axx
+  temp = HTTP.Get(UZG_ROOT_URI)
 
 def HandleRequest(pathNouns, count):
   try:
@@ -69,8 +80,8 @@ def HandleRequest(pathNouns, count):
   dir = MediaContainer('art-default.jpg', "Main", title1 = "Uitzending Gemist", title2 = title2)
   dir.SetAttr("content", "items")
   
-  Log.Add("Count: " + str(count))
-  Log.Add("pathNouns: " + str(pathNouns))
+  #Log.Add("Count: " + str(count))
+  #Log.Add("pathNouns: " + str(pathNouns))
   
   if count == 0:
     dir.AppendItem(DirectoryItem("Populair", "Populair", Plugin.ExposedResourcePath('icon-default.jpg')))
@@ -99,14 +110,14 @@ def HandleRequest(pathNouns, count):
       for e in genres:
         dir.AppendItem(DirectoryItem("%s/%s" % (e[1], e[0]), e[0], Plugin.ExposedResourcePath('icon-default.jpg')))
     elif count == 3:
-      listPages(dir, 'http://www.uitzendinggemist.nl/index.php/selectie?searchitem=genre&genre=%s' % (pathNouns[1]), UZG_REGEX_PAGE_ITEM)
+      listPages(dir, UZG_GENRES % (pathNouns[1]), UZG_REGEX_PAGE_ITEM)
   elif count > 0 and pathNouns[0] == 'Omroepen':
     if count == 1:
-      genres = [['3FM', '33'], ['AVRO', '11'], ['BNN', '16'], ['BOS', '7'], ['EO', '15'], ['HUMAN', '29'], ['IKON', '3'], ['Joodse Omroep', '48'], ['KRO', '2'], ['LLiNK', '45'], ['MAX', '46'], ['MTNL', '52'], ['NCRV', '8'], ['Nederland 1', '55'], ['Nederland 2', '56'], ['NIO', '49'], ['NMO', '4'], ['NOS', '12'], ['NPS', '22'], ['OHM', '5'], ['Omrop Fryslan', '6'], ['Radio 4', '27'], ['RKK', '1'], ['RNW', '25'], ['RVU', '23'], ['TELEAC & NOT', '43'], ['TROS', '14'], ['Vara', '17'], ['VPRO', '20'], ['Z@PP', '37'], ['Z@ppelin', '19'], ['ZvK', '28']]
-      for e in genres:
+      omroepen = [['3FM', '33'], ['AVRO', '11'], ['BNN', '16'], ['BOS', '7'], ['EO', '15'], ['HUMAN', '29'], ['IKON', '3'], ['Joodse Omroep', '48'], ['KRO', '2'], ['LLiNK', '45'], ['MAX', '46'], ['MTNL', '52'], ['NCRV', '8'], ['Nederland 1', '55'], ['Nederland 2', '56'], ['NIO', '49'], ['NMO', '4'], ['NOS', '12'], ['NPS', '22'], ['OHM', '5'], ['Omrop Fryslan', '6'], ['Radio 4', '27'], ['RKK', '1'], ['RNW', '25'], ['RVU', '23'], ['TELEAC & NOT', '43'], ['TROS', '14'], ['Vara', '17'], ['VPRO', '20'], ['Z@PP', '37'], ['Z@ppelin', '19'], ['ZvK', '28']]
+      for e in omroepen:
         dir.AppendItem(DirectoryItem("%s/%s" % (e[1], e[0]), e[0], Plugin.ExposedResourcePath('icon-default.jpg')))
     elif count == 3:
-      listPages(dir, 'http://www.uitzendinggemist.nl/index.php/selectie?searchitem=omroep&omroep=%s' % (pathNouns[1]), UZG_REGEX_PAGE_ITEM)
+      listPages(dir, UZG_OMROEPEN % (pathNouns[1]), UZG_REGEX_PAGE_ITEM)
   elif count > 0 and pathNouns[0] == 'Zenders':
     if count == 1:
       dir.AppendItem(DirectoryItem("Nederland_1", "Nederland 1", Plugin.ExposedResourcePath('icon-ned1.jpg')))
@@ -126,8 +137,6 @@ def HandleRequest(pathNouns, count):
     listPages(dir, UZG_TODAY, UZG_REGEX_PAGE_ITEM)
   elif pathNouns[0] == 'Gisteren':
     listPages(dir, UZG_YESTERDAY, UZG_REGEX_PAGE_ITEM)
-  elif pathNouns[0] == 'Gisteren':
-    listPages(dir, UZG_YESTERDAY, UZG_REGEX_PAGE_ITEM)
   elif pathNouns[0] == 'Zoeken':
     if count > 1:
       query = pathNouns[1].replace(" ","%20")
@@ -143,12 +152,12 @@ def HandleRequest(pathNouns, count):
   return dir.ToXML()
 
 def getStreamUrl(path):
-  temp = HTTP.Get("%s%s" % (UZG_PLAYER_URI, base64.b64decode(path)), 3600)
-  site = HTTP.Get("%s%s" % (UZG_PLAYER_INIT_FILE, base64.b64decode(path)), 3600)
+  temp = HTTP.Get("%s%s" % (UZG_PLAYER_URI, base64.b64decode(path)))
+  site = HTTP.Get("%s%s" % (UZG_PLAYER_INIT_FILE, base64.b64decode(path)))
   code = re.search(UZG_REGEX_ITEM_SECURITY, site).group(1)
   url = "%s%s&md5=%s" % (UZG_PLAYER_META, base64.b64decode(path), code)
-  item_url = re.search(UZG_REGEX_STREAM_URI, urllib2.urlopen(url).read()).group(1)
-  return re.search(UZG_REGEX_STREAM_DIRECT, urllib2.urlopen(item_url).read()).group(1)
+  item_url = re.search(UZG_REGEX_STREAM_URI, HTTP.Get(url)).group(1)
+  return re.search(UZG_REGEX_STREAM_DIRECT, HTTP.Get(item_url)).group(1)
 
 def listShows(dir, data, regex):
   results = re.compile(regex, re.DOTALL + re.IGNORECASE + re.M).findall(data)
@@ -156,13 +165,14 @@ def listShows(dir, data, regex):
     for result in results:
       dir.AppendItem(DirectoryItem(UZG_PLUGIN_PREFIX + "/list/" + base64.b64encode(result[0], "_;") + "/" + result[1], result[1], Plugin.ExposedResourcePath('icon-default.jpg')))
   else:
-    dir.AppendItem(DirectoryItem(UZG_PLUGIN_PREFIX, 'Er konden geen series/afleveringen worden gevonden', Plugin.ExposedResourcePath('icon-default.jpg')))
+    return MessageContainer("Hoi", "Ja?")
 
 def listShowItems(dir, data, regex, title):
   info = re.compile(UZG_REGEX_ITEM_INFO, re.DOTALL + re.IGNORECASE + re.M).search(data)
   thumb = re.compile(UZG_REGEX_ITEM_THUMB, re.DOTALL + re.IGNORECASE + re.M).search(data)
   results = re.compile(regex, re.DOTALL + re.IGNORECASE + re.M).findall(data)
   
+  # Try to get a thumbnail for the video
   try:
     if thumb.group(1):
       thumbUri = thumb.group(1)
@@ -173,7 +183,7 @@ def listShowItems(dir, data, regex, title):
     dir.AppendItem(DirectoryItem(UZG_PLUGIN_PREFIX + "/play/" + base64.b64encode(result[0], "_;") + "/" + result[1], result[1], thumbUri, info.group(1).replace("\n", "").strip()))
 
 def listSection(dir, url, regex, regex_section):
-  data = urllib2.urlopen(url).read().decode('latin-1')
+  data = HTTP.Get(url).decode('latin-1')
   result = re.compile(regex_section, re.DOTALL + re.IGNORECASE).findall(data)
   listSectionItems(dir, result[0], regex)
 
@@ -183,7 +193,7 @@ def listSectionItems(dir, data, regex):
     dir.AppendItem(DirectoryItem(UZG_PLUGIN_PREFIX + "/play/" + base64.b64encode(result[0], "_;") + "/" + result[1], result[1], Plugin.ExposedResourcePath('icon-default.jpg')))
 
 def listPages(dir, url, regex):
-  data = HTTP.Get(url).decode('latin-1')
+  data = HTTP.GetCached(url, CACHE_INTERVAL).decode('latin-1')
   data = data.replace("<span class=\"highlight\">", "").replace("</span>", "")
 
   result = re.compile(UZG_REGEX_PAGE_PAGES, re.DOTALL + re.IGNORECASE).findall(data)
